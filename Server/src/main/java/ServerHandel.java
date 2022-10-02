@@ -5,49 +5,53 @@ import java.net.ServerSocket;
 import java.util.List;
 
 @SuppressWarnings("UnstableApiUsage")
-public class ServerHandel {
-    private BufferedReader bufferedReader;
-    private BufferedWriter bufferedWriter;
+public class ServerHandel implements Runnable {
     private ObjectOutputStream out;
     private ObjectInputStream in;
     private ServerSocket serverSocket;
-    private final List<String> list;
+    private List<String> list;
     private EventBus bus;
+    private List<ServerHandel> serverHandels;
+    private int session;
 
-    public ServerHandel(BufferedReader bufferedReader, BufferedWriter bufferedWriter, ObjectOutputStream out, ObjectInputStream in,
-                        ServerSocket serverSocket, List<String> list, EventBus bus) {
-        this.bufferedReader = bufferedReader;
-        this.bufferedWriter = bufferedWriter;
+    public ServerHandel(ObjectOutputStream out, ObjectInputStream in, ServerSocket serverSocket, List<String> list, EventBus bus,
+                        int session) {
         this.out = out;
         this.in = in;
         this.serverSocket = serverSocket;
         this.list = list;
         this.bus = bus;
         this.bus.register(this);
+        this.session = session;
         new UserManagement(list, this.bus, this.out);
-        sendObjectOnServer();
     }
 
-    public void sendObjectOnServer() {
-        new Thread(() -> {
-            try {
-                while (!this.serverSocket.isClosed()) {
-                    Messages messages = (Messages) this.in.readObject();
+    @Override
+    public void run() {
+        try {
+            System.out.println(this.serverHandels.size());
+            while (!this.serverSocket.isClosed()) {
+                Messages messages = (Messages) this.in.readObject();
+                if (messages instanceof RequestLogin) {
                     this.bus.post(messages);
                 }
-            } catch (IOException | ClassNotFoundException e) {
-                e.printStackTrace();
+
+                if (messages instanceof RequestChatMessage) {
+                    for (ServerHandel serverHandel : serverHandels) {
+                        System.out.println(serverHandel.session);
+                        if (serverHandel.session != this.session) {
+                            serverHandel.bus.post(messages);
+                        }
+                    }
+                }
             }
-        }).start();
-
+        } catch (IOException | ClassNotFoundException e) {
+            e.printStackTrace();
+        }
     }
 
-    public void setBufferedReader(BufferedReader bufferedReader) {
-        this.bufferedReader = bufferedReader;
-    }
-
-    public void setBufferedWriter(BufferedWriter bufferedWriter) {
-        this.bufferedWriter = bufferedWriter;
+    public void addServerHandler(List<ServerHandel> serverHandels) {
+        this.serverHandels = serverHandels;
     }
 
     public void setOut(ObjectOutputStream out) {
@@ -64,14 +68,6 @@ public class ServerHandel {
 
     public void setBus(EventBus bus) {
         this.bus = bus;
-    }
-
-    public BufferedReader getBufferedReader() {
-        return bufferedReader;
-    }
-
-    public BufferedWriter getBufferedWriter() {
-        return bufferedWriter;
     }
 
     public ObjectOutputStream getOut() {
